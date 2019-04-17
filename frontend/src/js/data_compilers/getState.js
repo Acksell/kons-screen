@@ -2,7 +2,7 @@ const fetch = require('node-fetch')
 
 const compileRides = require('./slCompiler').compileRides
 const compileCalendar = require('./calendarCompiler').compileCalendar
-const compileInstagram = () => null
+const compileInstagram = require('./instagramCompiler').compileInstagram
 const compileFacebook = () => null
 const compileFNews = () => null
 
@@ -12,7 +12,10 @@ var toJson = resp => resp.json()
 var fetcher = function(endpoint, intermediary = toJson) {
     // Fetch from endpoint and then call intermediary with the response object.
     // Returns: A promise of the response data as a javascript object.
-    return fetch(endpoint).then(intermediary)
+    const proxy_url = process.env.NODE_ENV === "production" // this envvar is automatically set
+        ? "http://dataproxy:5000" // production uses docker.
+        : "http://127.0.0.1:5000"
+    return fetch(proxy_url + endpoint).then(intermediary)
 };
 
 var getStateFactory = function (deps){
@@ -23,18 +26,20 @@ var getStateFactory = function (deps){
       When testing you pass mock ("fake") functions that you can control in order
       to inspect how they were handled and behaved in retrospect.
 
-    // Returns: A getState function based on dependencies specified by `deps`.
-    //          the returned function returns a promise which resolves to the 
-                state used in the react application.
+      Returns: A getState function based on dependencies specified by `deps`.
+               the returned function returns a promise which resolves to the 
+               state used in the react application.
     */
     return () => {
         return Promise.all([
             // Fetch data from localhost which in turn calls f.kth.se
             // and then call the relevant compiler with the data returned.
-            deps.sl.fetcher("http://127.0.0.1:5000/sl-data").then(
+            deps.sl.fetcher("/sl-data").then(
                 deps.sl.compiler),
-            deps.cal.fetcher("http://127.0.0.1:5000/sektionskalendern").then(
-                deps.cal.compiler)
+            deps.cal.fetcher("/sektionskalendern").then(
+                deps.cal.compiler),
+            deps.ig.fetcher( "/instagram").then(
+                deps.ig.compiler)
         ]).then(responses => {
             let state = {}
             // Append each result to the state.
